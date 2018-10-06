@@ -1,0 +1,31 @@
+Description: >
+  This template contains the security groups required by our entire stack.
+  We create them in a seperate nested template, so they can be referenced
+  by all of the other nested templates.
+
+Parameters:
+
+  EnvironmentName:
+    Description: An environment name that will be prefixed to resource names
+    Type: String
+
+  VPC:
+    Type: AWS::EC2::VPC::Id
+    Description: Choose which VPC the security groups should be deployed to
+
+Resources:
+
+  ControlPlaneSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: EKS Control Plane
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-ControlPlane
+
+Outputs:
+
+  ControlPlaneSecurityGroup:
+    Description: A reference to the security group for EKS Control Plane
+    Value: !Ref ControlPlaneSecurityGroup

@@ -1,0 +1,283 @@
+Description: >
+    IAM Roles for EKS
+
+Parameters:
+
+  EnvironmentName:
+    Description: An environment name that will be prefixed to resource names
+    Type: String
+
+  WorkerNodeIamRoleArn:
+    Description: Worker node instance role for all Kube2IAM IAM Roles to trust it
+    Type: String
+
+  HelmS3BucketName:
+    Description: S3 Bucket Name that stores the Helm Charts. Empty string will not provision the IAM Role
+    Type: String
+    Default: ''
+
+Conditions:
+  ShouldCreateHelmS3BucketIamRole: !Not [ !Equals ["", !Ref HelmS3BucketName] ]
+
+Resources:
+
+  # https://github.com/kubernetes-incubator/external-dns/blob/master/docs/tutorials/aws.md
+  ExternalDnsIamRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Sub ${EnvironmentName}-externaldns
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+          -
+            Effect: "Allow"
+            Action: "sts:AssumeRole"
+            Principal:
+              AWS:
+                - !Ref WorkerNodeIamRoleArn
+      Path: "/"
+      Policies:
+        # https://github.com/jtblin/kube2iam#iam-roles
+        # https://gist.github.com/snoby/77a49b6b79d0dd2ad9afbbf533588f54
+        -
+          PolicyName: "allow-recordsets-management"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Action:
+                  - "route53:ChangeResourceRecordSets"
+                Effect: "Allow"
+                Resource: "arn:aws:route53:::hostedzone/*"
+              -
+                Action:
+                  - "route53:ListHostedZones"
+                  - "route53:ListResourceRecordSets"
+                Effect: "Allow"
+                Resource: "*"
+
+  # https://github.com/fluent-plugins-nursery/fluent-plugin-cloudwatch-logs
+  FluentDCfnIamRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Sub ${EnvironmentName}-fluentdcfn
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+          -
+            Effect: "Allow"
+            Action: "sts:AssumeRole"
+            Principal:
+              AWS:
+                - !Ref WorkerNodeIamRoleArn
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "allow-storing-cloudWatch-logs"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Action:
+                  - "logs:*"
+                Effect: "Allow"
+                Resource:
+                  - "*"
+              -
+                Action:
+                  - "s3:GetObject"
+                Effect: "Allow"
+                Resource:
+                  - "*"
+
+  HelmRepoIamRole:
+    Type: "AWS::IAM::Role"
+    Condition: ShouldCreateHelmS3BucketIamRole
+    Properties:
+      RoleName: !Sub ${EnvironmentName}-helmrepo
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+          -
+            Effect: "Allow"
+            Action: "sts:AssumeRole"
+            Principal:
+              AWS:
+                - !Ref WorkerNodeIamRoleArn
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "allow-reading-s3-objects"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Action:
+                  - "s3:ListBucket"
+                Effect: "Allow"
+                Resource:
+                  - !Sub "arn:aws:s3:::${HelmS3BucketName}"
+              -
+                Action:
+                  - "s3:GetObject"
+                Effect: "Allow"
+                Resource:
+                  - !Sub "arn:aws:s3:::${HelmS3BucketName}/*"
+
+  # For Kube2Iam
+  EbsStorageClassIamRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Sub ${EnvironmentName}-ebsstorageclass
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+          -
+            Effect: "Allow"
+            Action: "sts:AssumeRole"
+            Principal:
+              AWS:
+                - !Ref WorkerNodeIamRoleArn
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "allow-ebs-volume-management"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Action:
+                  - "ec2:AttachVolume"
+                  - "ec2:DetachVolume"
+                Effect: "Allow"
+                Resource: "*"
+
+  # For Kube2Iam
+  EcrCapabilityIamRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Sub ${EnvironmentName}-ecrcapability
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+          -
+            Effect: "Allow"
+            Action: "sts:AssumeRole"
+            Principal:
+              AWS:
+                - !Ref WorkerNodeIamRoleArn
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "allow-ecr-usage"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Action:
+                  - "ecr:GetAuthorizationToken"
+                  - "ecr:BatchCheckLayerAvailability"
+                  - "ecr:GetDownloadUrlForLayer"
+                  - "ecr:GetRepositoryPolicy"
+                  - "ecr:DescribeRepositories"
+                  - "ecr:ListImages"
+                  - "ecr:BatchGetImage"
+                Effect: "Allow"
+                Resource: "*"
+
+  # For Kube2Iam
+  # https://docs.instana.io/quick_start/agent_setup/aws/#instance-configuration
+  InstanaIamRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Sub ${EnvironmentName}-instana
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+          -
+            Effect: "Allow"
+            Action: "sts:AssumeRole"
+            Principal:
+              AWS:
+                - !Ref WorkerNodeIamRoleArn
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "allow-monitoring-on-aws-recourses"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Action:
+                  - "cloudwatch:GetMetricStatistics"
+                  - "cloudwatch:ListMetrics"
+                  - "dynamodb:ListTables"
+                  - "dynamodb:DescribeTable"
+                  - "dynamodb:ListTagsOfResource"
+                  - "rds:Describe*"
+                  - "rds:ListTagsForResource"
+                  - "sqs:ListQueues"
+                  - "sqs:GetQueueAttributes"
+                  - "sqs:ListQueueTags"
+                  - "elasticache:ListTagsForResource"
+                  - "elasticache:DescribeCacheClusters"
+                  - "elasticache:DescribeEvents"
+                  - "elasticloadbalancing:DescribeLoadBalancers"
+                  - "elasticloadbalancing:DescribeTags"
+                  - "ec2:DescribeInstances"
+                  - "ec2:DescribeTags"
+                  - "kinesis:ListStreams"
+                  - "kinesis:DescribeStream"
+                  - "kinesis:ListTagsForStream"
+                  - "lambda:ListTags"
+                  - "lambda:ListFunctions"
+                  - "lambda:GetFunctionConfiguration"
+                  - "s3:GetBucketTagging"
+                  - "s3:ListAllMyBuckets"
+                  - "s3:GetBucketLocation"
+                  - "xray:BatchGetTraces"
+                  - "xray:GetTraceSummaries"
+                Effect: "Allow"
+                Resource: "*"

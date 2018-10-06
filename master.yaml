@@ -1,0 +1,144 @@
+Parameters:
+
+  VPCId:
+    Description: VPCId
+    Type: AWS::EC2::VPC::Id
+
+  EksControlPlaneSubnets:
+    Description: (Public) Subnets where the control plane run.
+    Type: List<AWS::EC2::Subnet::Id>
+
+  NodeGroupSubnets:
+    Description: (Private) Subnets where the node group run.
+    Type: List<AWS::EC2::Subnet::Id>
+
+  NodeGroupKeyName:
+    Description: The EC2 Key Pair to allow SSH access to the NodeGroup instances
+    Type: AWS::EC2::KeyPair::KeyName
+
+  NodeInstanceType:
+    Description: EC2 instance type for the node instances
+    Type: String
+    Default: t2.medium
+    AllowedValues:
+    - t2.small
+    - t2.medium
+    - t2.large
+    - t2.xlarge
+    - t2.2xlarge
+    - m3.medium
+    - m3.large
+    - m3.xlarge
+    - m3.2xlarge
+    - m4.large
+    - m4.xlarge
+    - m4.2xlarge
+    - m4.4xlarge
+    - m4.10xlarge
+    - m5.large
+    - m5.xlarge
+    - m5.2xlarge
+    - m5.4xlarge
+    - m5.12xlarge
+    - m5.24xlarge
+    - c4.large
+    - c4.xlarge
+    - c4.2xlarge
+    - c4.4xlarge
+    - c4.8xlarge
+    - c5.large
+    - c5.xlarge
+    - c5.2xlarge
+    - c5.4xlarge
+    - c5.9xlarge
+    - c5.18xlarge
+    - i3.large
+    - i3.xlarge
+    - i3.2xlarge
+    - i3.4xlarge
+    - i3.8xlarge
+    - i3.16xlarge
+    - r3.xlarge
+    - r3.2xlarge
+    - r3.4xlarge
+    - r3.8xlarge
+    - r4.large
+    - r4.xlarge
+    - r4.2xlarge
+    - r4.4xlarge
+    - r4.8xlarge
+    - r4.16xlarge
+    - x1.16xlarge
+    - x1.32xlarge
+    - p2.xlarge
+    - p2.8xlarge
+    - p2.16xlarge
+    - p3.2xlarge
+    - p3.8xlarge
+    - p3.16xlarge
+    ConstraintDescription: must be a valid EC2 instance type
+
+  NodeAutoScalingGroupMinSize:
+    Type: Number
+    Description: Minimum size of Node Group ASG.
+    Default: 1
+
+  NodeAutoScalingGroupMaxSize:
+    Type: Number
+    Description: Maximum size of Node Group ASG.
+    Default: 4
+
+  NodeAutoScalingGroupDesiredSize:
+    Type: Number
+    Description: Desired size of Node Group ASG.
+    Default: 2
+
+  HelmS3BucketName:
+    Description: (Optional) S3 Bucket Name that stores the Helm Charts. Empty string will not provision the IAM Role.
+    Type: String
+    Default: ''
+
+Resources:
+
+  IamRoles:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.amazonaws.com/eks-cf/iam.yaml
+      Parameters:
+        EnvironmentName: !Ref AWS::StackName
+        WorkerNodeIamRoleArn: !GetAtt EksDefaultNodeGroup.Outputs.NodeInstanceRole
+        HelmS3BucketName: !Ref HelmS3BucketName
+
+  SecurityGroups:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.amazonaws.com/eks-cf/securitygroups.yaml
+      Parameters:
+        EnvironmentName: !Ref AWS::StackName
+        VPC: !Ref VPCId
+
+  EksCluster:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.amazonaws.com/eks-cf/control-plane.yaml
+      Parameters:
+        EnvironmentName: !Ref AWS::StackName
+        ControlPlaneSecurityGroup: !GetAtt SecurityGroups.Outputs.ControlPlaneSecurityGroup
+        Subnets: !Join [ ",", !Ref EksControlPlaneSubnets]
+
+  EksDefaultNodeGroup:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.amazonaws.com/eks-cf/node-group.yaml
+      Parameters:
+        KeyName: !Ref NodeGroupKeyName
+        NodeImageId: ami-0440e4f6b9713faf6
+        NodeInstanceType: !Ref NodeInstanceType
+        NodeAutoScalingGroupMinSize: !Ref NodeAutoScalingGroupMinSize
+        NodeAutoScalingGroupMaxSize: !Ref NodeAutoScalingGroupMaxSize
+        NodeAutoScalingGroupDesiredSize: !Ref NodeAutoScalingGroupDesiredSize
+        ClusterName: !GetAtt EksCluster.Outputs.EksClusterName
+        NodeGroupName: "generalpurpose"
+        ClusterControlPlaneSecurityGroup: !GetAtt SecurityGroups.Outputs.ControlPlaneSecurityGroup
+        VpcId: !Ref VPCId
+        Subnets: !Join [ ",", !Ref NodeGroupSubnets]

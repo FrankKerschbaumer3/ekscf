@@ -1,0 +1,66 @@
+Description: >
+    EKS Control Plane
+
+Parameters:
+
+  EnvironmentName:
+    Description: An environment name that will be prefixed to resource names
+    Type: String
+
+  ControlPlaneSecurityGroup:
+    Description: Security Group for the Control Plane
+    Type: AWS::EC2::SecurityGroup::Id
+
+  Subnets:
+    Description: Choose which subnets the EKS should be deployed to
+    Type: List<AWS::EC2::Subnet::Id>
+
+Resources:
+
+  EksIamRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Sub ${EnvironmentName}-eks
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "eks.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+        - arn:aws:iam::aws:policy/AmazonEKSServicePolicy
+
+  EksCluster:
+    Type: "AWS::EKS::Cluster"
+    Properties:
+      Name: !Ref EnvironmentName
+      Version: "1.10"
+      RoleArn: !GetAtt EksIamRole.Arn
+      ResourcesVpcConfig:
+        SecurityGroupIds:
+          - !Ref ControlPlaneSecurityGroup
+        SubnetIds: !Ref Subnets
+
+Outputs:
+
+  EksCluster:
+    Description: A reference to the EKS Cluster
+    Value: !Ref EksCluster
+
+  EksClusterName:
+    Description: EKS Cluster Name
+    Value: !Ref EnvironmentName
+
+  EksClusterEndpoint:
+    Description: EKS Cluster Endpoint
+    Value: !GetAtt EksCluster.Endpoint
+
+  EksClusterCAData:
+    Description: EKS Cluster CertificateAuthorityData
+    Value: !GetAtt EksCluster.CertificateAuthorityData
