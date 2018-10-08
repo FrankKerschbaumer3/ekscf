@@ -12,10 +12,6 @@ Parameters:
     Description: (Private) Subnets where the node group run.
     Type: List<AWS::EC2::Subnet::Id>
 
-  NodeGroupKeyName:
-    Description: The EC2 Key Pair to allow SSH access to the NodeGroup instances
-    Type: AWS::EC2::KeyPair::KeyName
-
   NodeInstanceType:
     Description: EC2 instance type for the node instances
     Type: String
@@ -131,7 +127,6 @@ Resources:
     Properties:
       TemplateURL: https://s3.amazonaws.com/eks-cf/node-group.yaml
       Parameters:
-        KeyName: !Ref NodeGroupKeyName
         NodeImageId: ami-0440e4f6b9713faf6
         NodeInstanceType: !Ref NodeInstanceType
         NodeAutoScalingGroupMinSize: !Ref NodeAutoScalingGroupMinSize
